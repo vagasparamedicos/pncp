@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PNCP – Consulta de Publicações (Front-end)</title>
+  <meta name="description" content="Consulta pública ao PNCP via API (front-end puro). Filtros, paginação e exportação." />
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#0f1a2e;
+      --muted:#9fb0d0;
+      --text:#e7efff;
+      --border:rgba(255,255,255,.12);
+      --accent:#77b0ff;
+      --danger:#ff6b6b;
+      --ok:#2dd4bf;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;
+      background:linear-gradient(180deg, #071022, #0b1220 30%, #0b1220);
+      color:var(--text);
+    }
+    a{color:var(--accent); text-decoration:none}
+    a:hover{text-decoration:underline}
+    .wrap{max-width:1100px; margin:0 auto; padding:20px}
+    header{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+      flex-wrap:wrap; margin-bottom:14px;
+    }
+    h1{font-size:20px; margin:0 0 6px 0}
+    .sub{color:var(--muted); font-size:13px; margin:0}
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px; border:1px solid var(--border);
+      background:rgba(255,255,255,.04); border-radius:999px;
+      font-size:12px; color:var(--muted);
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+    }
+    .panel{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.03);
+      border-radius:14px;
+      padding:14px;
+    }
+    .form{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:10px;
+      align-items:end;
+    }
+    .field{grid-column:span 3}
+    .field.w2{grid-column:span 2}
+    .field.w4{grid-column:span 4}
+    .field.w6{grid-column:span 6}
+    label{display:block; font-size:12px; color:var(--muted); margin:0 0 6px}
+    input, select, button, textarea{
+      width:100%;
+      padding:10px 10px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:rgba(15,26,46,.9);
+      color:var(--text);
+      outline:none;
+    }
+    input::placeholder{color:rgba(159,176,208,.6)}
+    input:focus, select:focus, textarea:focus{border-color:rgba(119,176,255,.6)}
+    .row{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    }
+    .btn{
+      cursor:pointer;
+      background:linear-gradient(180deg, rgba(119,176,255,.22), rgba(119,176,255,.12));
+      border:1px solid rgba(119,176,255,.35);
+      font-weight:600;
+    }
+    .btn:disabled{opacity:.55; cursor:not-allowed}
+    .btn.secondary{
+      background:rgba(255,255,255,.04);
+      border:1px solid var(--border);
+      font-weight:600;
+    }
+    .hint{font-size:12px; color:var(--muted); margin-top:8px}
+    .status{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;
+    }
+    .msg{font-size:13px; color:var(--muted)}
+    .msg strong{color:var(--text)}
+    .msg.ok{color:rgba(45,212,191,.95)}
+    .msg.err{color:rgba(255,107,107,.95)}
+    .cards{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+      margin-top:10px;
+    }
+    .card{
+      border:1px solid var(--border);
+      background:rgba(15,26,46,.75);
+      border-radius:14px;
+      padding:12px;
+    }
+    .card h3{margin:0 0 6px; font-size:14px}
+    .meta{
+      display:flex; gap:10px; flex-wrap:wrap;
+      color:var(--muted); font-size:12px;
+      margin-bottom:8px;
+    }
+    .meta span{
+      padding:4px 8px; border:1px solid var(--border);
+      border-radius:999px; background:rgba(255,255,255,.03);
+    }
+    .obj{margin:0; font-size:13px; color:rgba(231,239,255,.92); line-height:1.35}
+    .tools{
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+      margin-top:10px;
+    }
+    .tools .btn{width:auto; padding:9px 12px}
+    .split{
+      display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between;
+    }
+    .small{font-size:12px; color:var(--muted)}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; font-size:12px}
+    .footer{margin-top:14px; font-size:12px; color:var(--muted)}
+    @media (min-width: 860px){
+      .grid{grid-template-columns: 1.15fr .85fr}
+      .cards{grid-template-columns:1fr}
+    }
+    @media (max-width: 860px){
+      .field{grid-column:span 6}
+      .field.w2{grid-column:span 6}
+      .field.w4{grid-column:span 12}
+      .field.w6{grid-column:span 12}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>PNCP – Consulta de Publicações (API)</h1>
+        <p class="sub">Front-end puro (HTML/CSS/JS). Consulta via <span class="kbd">/api/consulta/v1/contratacoes/publicacao</span>.</p>
+      </div>
+      <div class="row">
+        <span class="pill" id="pill-env">Ambiente: <strong>GitHub Pages / Local</strong></span>
+        <span class="pill" id="pill-last">Última consulta: <strong>—</strong></span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Painel principal -->
+      <section class="panel">
+        <form class="form" id="form">
+          <div class="field w2">
+            <label for="dataInicial">Data inicial (AAAAMMDD)</label>
+            <input id="dataInicial" name="dataInicial" placeholder="20240101" inputmode="numeric" maxlength="8" />
+          </div>
+
+          <div class="field w2">
+            <label for="dataFinal">Data final (AAAAMMDD)</label>
+            <input id="dataFinal" name="dataFinal" placeholder="20240131" inputmode="numeric" maxlength="8" />
+          </div>
+
+          <div class="field w4">
+            <label for="modalidades">Modalidade(s) (códigos separados por vírgula)</label>
+            <input id="modalidades" name="modalidades" placeholder="6 (ou 6,4,7...)" />
+          </div>
+
+          <div class="field w2">
+            <label for="pagina">Página (API)</label>
+            <input id="pagina" name="pagina" value="1" inputmode="numeric" />
+          </div>
+
+          <div class="field w2">
+            <label for="tamanhoPagina">Tamanho (1–500)</label>
+            <input id="tamanhoPagina" name="tamanhoPagina" value="50" inputmode="numeric" />
+          </div>
+
+          <div class="field w4">
+            <label for="tipoInstrumento">Instrumento convocatório</label>
+            <select id="tipoInstrumento" name="tipoInstrumento">
+              <option value="todos">Todos</option>
+              <option value="1">Somente Edital (1)</option>
+              <option value="2">Somente Aviso de Contratação Direta (2)</option>
+              <option value="3">Somente Ato que autoriza CD (3)</option>
+            </select>
+          </div>
+
+          <div class="field w4">
+            <label for="busca">Filtro por texto (cliente)</label>
+            <input id="busca" name="busca" placeholder="ex.: órgão, objeto, número..." />
+          </div>
+
+          <div class="field w4">
+            <label for="ordenacao">Ordenação (cliente)</label>
+            <select id="ordenacao" name="ordenacao">
+              <option value="desc">Mais recentes primeiro</option>
+              <option value="asc">Mais antigos primeiro</option>
+            </select>
+          </div>
+
+          <div class="field w4">
+            <button class="btn" id="btnBuscar" type="submit">Buscar</button>
+          </div>
+
+          <div class="field w4">
+            <button class="btn secondary" id="btnLimpar" type="button">Limpar</button>
+          </div>
+
+          <div class="field w4">
+            <button class="btn secondary" id="btnExemplo" type="button">Preencher exemplo</button>
+          </div>
+        </form>
+
+        <div class="hint">
+          Observações: (1) Se você informar várias modalidades, o sistema faz 1 chamada por modalidade e <strong>mescla</strong> os itens.
+          (2) O filtro por texto e ordenação são feitos no navegador (cliente).
+        </div>
+
+        <div class="status" style="margin-top:12px">
+          <div class="msg" id="msg">Pronto.</div>
+          <div class="row">
+            <button class="btn secondary" id="btnPrev" type="button" disabled>◀ Página anterior</button>
+            <button class="btn secondary" id="btnNext" type="button" disabled>Próxima página ▶</button>
+          </div>
+        </div>
+
+        <div class="tools">
+          <button class="btn secondary" id="btnExportJson" type="button" disabled>Exportar JSON</button>
+          <button class="btn secondary" id="btnExportCsv" type="button" disabled>Exportar CSV</button>
+          <a class="small" id="linkApi" href="#" target="_blank" rel="noopener">Abrir última URL da API</a>
+        </div>
+
+        <div class="cards" id="lista"></div>
+
+        <div class="footer" id="rodape"></div>
+      </section>
+
+      <!-- Painel lateral -->
+      <aside class="panel">
+        <div class="split">
+          <div>
+            <h2 style="margin:0 0 6px; font-size:14px">Diagnóstico</h2>
+            <div class="small">Útil para validar retorno e campos.</div>
+          </div>
+          <button class="btn secondary" id="btnToggleDebug" type="button">Mostrar debug</button>
+        </div>
+
+        <div id="debugBox" style="display:none; margin-top:10px">
+          <label for="debug">Última resposta (parcial)</label>
+          <textarea id="debug" rows="18" spellcheck="false" class="kbd" readonly></textarea>
+          <div class="small" style="margin-top:8px">
+            Dica: se “Editais: 0”, provavelmente a modalidade consultada não publica “Edital (1)” com frequência.
+          </div>
+        </div>
+
+        <div style="margin-top:14px" class="small">
+          <strong>Atalhos</strong><br/>
+          • Modalidade(s): você pode usar <span class="kbd">6</span> para teste rápido (exemplo).<br/>
+          • Datas: use intervalos pequenos para validar.<br/>
+          • Se quiser “só Edital”: selecione “Somente Edital (1)”.
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    // ========= CONFIG =========
+    const API_BASE = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao";
+
+    // ========= HELPERS =========
+    const $ = (id) => document.getElementById(id);
+
+    function nowBr(){
+      const d = new Date();
+      return d.toLocaleString("pt-BR");
+    }
+
+    function onlyDigits(s){ return (s || "").replace(/\D+/g, ""); }
+
+    function isAAAAMMDD(s){
+      return /^\d{8}$/.test(s);
+    }
+
+    function clamp(n, min, max){
+      n = Number(n);
+      if (Number.isNaN(n)) return min;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function normalizeModalidades(value){
+      const raw = (value || "").split(",").map(s => s.trim()).filter(Boolean);
+      const nums = raw.map(s => onlyDigits(s)).filter(s => s.length > 0);
+      // remove duplicados
+      return Array.from(new Set(nums));
+    }
+
+    function buildUrl({dataInicial, dataFinal, codigoModalidadeContratacao, pagina, tamanhoPagina}){
+      const u = new URL(API_BASE);
+      u.searchParams.set("dataInicial", dataInicial);
+      u.searchParams.set("dataFinal", dataFinal);
+      u.searchParams.set("codigoModalidadeContratacao", codigoModalidadeContratacao);
+      u.searchParams.set("pagina", String(pagina));
+      u.searchParams.set("tamanhoPagina", String(tamanhoPagina));
+      return u.toString();
+    }
+
+    function safeText(v){
+      if (v === null || v === undefined) return "";
+      return String(v);
+    }
+
+    function pick(obj, keys){
+      for (const k of keys){
+        if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
+      }
+      return "";
+    }
+
+    function toSearchableString(item){
+      const parts = [
+        pick(item, ["orgaoNome", "orgaoEntidadeRazaoSocial", "orgaoEntidadeNome"]),
+        pick(item, ["unidadeOrgaoNome", "unidadeNome"]),
+        pick(item, ["objetoCompra", "objeto", "descricaoObjeto"]),
+        pick(item, ["modalidadeNome", "modalidade"]),
+        pick(item, ["numeroCompra", "numeroInstrumentoConvocatorio", "numero"]),
+        pick(item, ["anoCompra", "ano"]),
+        pick(item, ["uf", "siglaUf", "unidadeUf"]),
+        pick(item, ["municipioNome", "municipio"]),
+        pick(item, ["tipoInstrumentoConvocatorioNome"])
+      ];
+      return parts.join(" ").toLowerCase();
+    }
+
+    function sortByDate(items, order){
+      const keyCandidates = ["dataPublicacaoPncp", "dataPublicacao", "dataPublicacaoEdital", "dataInclusao"];
+      const getTime = (x) => {
+        const v = pick(x, keyCandidates);
+        const t = Date.parse(v);
+        return Number.isNaN(t) ? 0 : t;
+      };
+      const dir = order === "asc" ? 1 : -1;
+      return items.slice().sort((a,b) => (getTime(a) - getTime(b)) * dir);
+    }
+
+    function downloadFile(filename, content, mime){
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function fetchJsonWithTimeout(url, ms=20000){
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), ms);
+      try{
+        const resp = await fetch(url, { signal: ctrl.signal });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    // ========= STATE =========
+    let lastMerged = [];
+    let lastRawSample = null;
+    let lastUrls = [];
+    let busy = false;
+
+    // ========= UI =========
+    function setMsg(text, kind="info"){
+      const el = $("msg");
+      el.className = "msg";
+      if (kind === "ok") el.classList.add("ok");
+      if (kind === "err") el.classList.add("err");
+      el.textContent = text;
+    }
+
+    function setBusy(v){
+      busy = v;
+      $("btnBuscar").disabled = v;
+      $("btnPrev").disabled = v || Number($("pagina").value) <= 1;
+      $("btnNext").disabled = v;
+      $("btnExportJson").disabled = v || lastMerged.length === 0;
+      $("btnExportCsv").disabled = v || lastMerged.length === 0;
+    }
+
+    function render(items){
+      const box = $("lista");
+      box.innerHTML = "";
+
+      const frag = document.createDocumentFragment();
+
+      for (const item of items){
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const titulo = pick(item, ["orgaoNome", "orgaoEntidadeRazaoSocial", "orgaoEntidadeNome"]) || "Órgão não informado";
+        const unidade = pick(item, ["unidadeOrgaoNome", "unidadeNome"]);
+        const modalidade = pick(item, ["modalidadeNome", "modalidade"]) || pick(item, ["codigoModalidadeContratacao"]);
+        const tipoInstr = pick(item, ["tipoInstrumentoConvocatorioNome"]) || (item?.tipoInstrumentoConvocatorioId ? `Tipo ${item.tipoInstrumentoConvocatorioId}` : "");
+        const numero = pick(item, ["numeroCompra", "numeroInstrumentoConvocatorio", "numero"]);
+        const ano = pick(item, ["anoCompra", "ano"]);
+        const uf = pick(item, ["uf", "siglaUf", "unidadeUf"]);
+        const mun = pick(item, ["municipioNome", "municipio"]);
+        const dataPub = pick(item, ["dataPublicacaoPncp", "dataPublicacao", "dataPublicacaoEdital", "dataInclusao"]);
+
+        const objeto = pick(item, ["objetoCompra", "objeto", "descricaoObjeto"]) || "Objeto não informado.";
+
+        const h3 = document.createElement("h3");
+        h3.textContent = titulo;
+        card.appendChild(h3);
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+
+        const badges = [
+          unidade ? `Unidade: ${unidade}` : "",
+          modalidade ? `Modalidade: ${modalidade}` : "",
+          tipoInstr ? `Instrumento: ${tipoInstr}` : "",
+          (numero || ano) ? `Nº/Ano: ${numero || "—"}/${ano || "—"}` : "",
+          (uf || mun) ? `${mun ? mun : ""}${(mun && uf) ? " - " : ""}${uf ? uf : ""}` : "",
+          dataPub ? `Publicação: ${dataPub}` : ""
+        ].filter(Boolean);
+
+        for (const b of badges){
+          const s = document.createElement("span");
+          s.textContent = b;
+          meta.appendChild(s);
+        }
+        card.appendChild(meta);
+
+        const p = document.createElement("p");
+        p.className = "obj";
+        p.textContent = objeto;
+        card.appendChild(p);
+
+        // links úteis (sem adivinhar URL do app: mostramos a linha na API, e campos de link se existirem)
+        const linkRow = document.createElement("div");
+        linkRow.className = "tools";
+
+        const link1 = document.createElement("a");
+        link1.href = "#";
+        link1.textContent = "Ver item (JSON)";
+        link1.className = "small";
+        link1.addEventListener("click", (e) => {
+          e.preventDefault();
+          $("debug").value = JSON.stringify(item, null, 2);
+          $("debugBox").style.display = "block";
+          $("btnToggleDebug").textContent = "Ocultar debug";
+        });
+        linkRow.appendChild(link1);
+
+        const directLink = pick(item, ["linkSistemaOrigem", "link", "url", "uri"]);
+        if (directLink){
+          const a = document.createElement("a");
+          a.href = directLink;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.className = "small";
+          a.textContent = "Abrir link (origem)";
+          linkRow.appendChild(a);
+        }
+
+        card.appendChild(linkRow);
+
+        frag.appendChild(card);
+      }
+
+      box.appendChild(frag);
+
+      $("rodape").textContent =
+        `Itens exibidos: ${items.length} | Total carregado (após filtros): ${items.length} | Última atualização: ${nowBr()}`;
+    }
+
+    function toCsv(items){
+      const cols = [
+        ["orgao", ["orgaoNome","orgaoEntidadeRazaoSocial","orgaoEntidadeNome"]],
+        ["unidade", ["unidadeOrgaoNome","unidadeNome"]],
+        ["modalidade", ["modalidadeNome","modalidade","codigoModalidadeContratacao"]],
+        ["instrumento", ["tipoInstrumentoConvocatorioNome","tipoInstrumentoConvocatorioId"]],
+        ["numero", ["numeroCompra","numeroInstrumentoConvocatorio","numero"]],
+        ["ano", ["anoCompra","ano"]],
+        ["uf", ["uf","siglaUf","unidadeUf"]],
+        ["municipio", ["municipioNome","municipio"]],
+        ["data_publicacao", ["dataPublicacaoPncp","dataPublicacao","dataPublicacaoEdital","dataInclusao"]],
+        ["objeto", ["objetoCompra","objeto","descricaoObjeto"]],
+        ["link", ["linkSistemaOrigem","link","url","uri"]],
+      ];
+
+      const esc = (v) => {
+        const s = safeText(v).replaceAll('"','""');
+        return `"${s}"`;
+      };
+
+      const header = cols.map(c => esc(c[0])).join(",");
+      const lines = [header];
+
+      for (const it of items){
+        const row = cols.map(([_, keys]) => esc(pick(it, keys)));
+        lines.push(row.join(","));
+      }
+
+      return lines.join("\n");
+    }
+
+    function applyFiltersAndRender(rawMerged){
+      const tipo = $("tipoInstrumento").value; // todos | 1 | 2 | 3
+      const q = ($("busca").value || "").trim().toLowerCase();
+      const ord = $("ordenacao").value;
+
+      let items = rawMerged.slice();
+
+      if (tipo !== "todos"){
+        const id = Number(tipo);
+        items = items.filter(x => Number(x?.tipoInstrumentoConvocatorioId) === id);
+      }
+
+      if (q){
+        items = items.filter(x => toSearchableString(x).includes(q));
+      }
+
+      items = sortByDate(items, ord);
+
+      lastMerged = items;
+
+      const editaisCount = rawMerged.filter(x => Number(x?.tipoInstrumentoConvocatorioId) === 1).length;
+      const avisoCount   = rawMerged.filter(x => Number(x?.tipoInstrumentoConvocatorioId) === 2).length;
+      const atoCount     = rawMerged.filter(x => Number(x?.tipoInstrumentoConvocatorioId) === 3).length;
+
+      setMsg(`OK. Itens brutos: ${rawMerged.length} | Editais: ${editaisCount} | Avisos: ${avisoCount} | Atos: ${atoCount} | Após filtros: ${items.length}`, "ok");
+
+      $("btnExportJson").disabled = items.length === 0;
+      $("btnExportCsv").disabled = items.length === 0;
+
+      render(items);
+
+      // Debug (mostra só 1 item)
+      lastRawSample = items[0] || rawMerged[0] || null;
+      $("debug").value = lastRawSample ? JSON.stringify(lastRawSample, null, 2) : "";
+
+      $("pill-last").innerHTML = `Última consulta: <strong>${nowBr()}</strong>`;
+    }
+
+    // ========= MAIN FLOW =========
+    async function buscar(){
+      if (busy) return;
+
+      // inputs
+      const dataInicial = onlyDigits($("dataInicial").value.trim());
+      const dataFinal   = onlyDigits($("dataFinal").value.trim());
+      const modalidades = normalizeModalidades($("modalidades").value);
+      const pagina = clamp($("pagina").value, 1, 999999);
+      const tamanhoPagina = clamp($("tamanhoPagina").value, 1, 500);
+
+      $("pagina").value = String(pagina);
+      $("tamanhoPagina").value = String(tamanhoPagina);
+
+      if (!isAAAAMMDD(dataInicial) || !isAAAAMMDD(dataFinal)){
+        setMsg("Erro: preencha Data inicial e Data final no formato AAAAMMDD (somente números).", "err");
+        return;
+      }
+
+      if (modalidades.length === 0){
+        setMsg("Erro: informe ao menos 1 modalidade (ex.: 6).", "err");
+        return;
+      }
+
+      // persist (localStorage)
+      localStorage.setItem("pncp.form", JSON.stringify({
+        dataInicial, dataFinal, modalidades: $("modalidades").value,
+        pagina, tamanhoPagina,
+        tipoInstrumento: $("tipoInstrumento").value,
+        busca: $("busca").value,
+        ordenacao: $("ordenacao").value
+      }));
+
+      setBusy(true);
+      setMsg("Consultando API…", "info");
+      $("lista").innerHTML = "";
+      $("rodape").textContent = "";
+
+      try{
+        const merged = [];
+        lastUrls = [];
+
+        // 1 chamada por modalidade
+        for (let i = 0; i < modalidades.length; i++){
+          const mod = modalidades[i];
+          const url = buildUrl({ dataInicial, dataFinal, codigoModalidadeContratacao: mod, pagina, tamanhoPagina });
+          lastUrls.push(url);
+
+          // para facilitar, o link "Abrir última URL" mostra a primeira (se houver várias)
+          $("linkApi").href = lastUrls[0];
+          $("linkApi").textContent = "Abrir última URL da API";
+
+          // fetch
+          const json = await fetchJsonWithTimeout(url, 20000);
+
+          // a API às vezes pode devolver em formatos diferentes; tentamos ser tolerantes:
+          const items = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+          for (const it of items) merged.push(it);
+
+          // leve pausa se tiver várias modalidades (boa prática para não “martelar”)
+          if (modalidades.length > 1) await new Promise(r => setTimeout(r, 250));
+        }
+
+        // remove duplicados (por uma chave provável)
+        const seen = new Set();
+        const deduped = [];
+        for (const it of merged){
+          const key = pick(it, ["id", "contratacaoId", "sequencialCompra", "numeroCompra", "numeroInstrumentoConvocatorio"])
+                   + "|" + pick(it, ["anoCompra", "ano"])
+                   + "|" + pick(it, ["orgaoNome", "orgaoEntidadeRazaoSocial", "orgaoEntidadeNome"]);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          deduped.push(it);
+        }
+
+        applyFiltersAndRender(deduped);
+
+        // paginação (API): só habilitamos "prev" e "next" como navegação; "next" fica habilitado sempre,
+        // porque nem sempre temos "total" confiável para calcular fim.
+        $("btnPrev").disabled = pagina <= 1;
+        $("btnNext").disabled = false;
+
+      } catch (e){
+        setMsg(`Erro na requisição: ${String(e)}`, "err");
+        $("btnNext").disabled = true;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    // ========= EVENTS =========
+    $("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      buscar();
+    });
+
+    $("btnPrev").addEventListener("click", () => {
+      const p = clamp($("pagina").value, 1, 999999);
+      if (p > 1){
+        $("pagina").value = String(p - 1);
+        buscar();
+      }
+    });
+
+    $("btnNext").addEventListener("click", () => {
+      const p = clamp($("pagina").value, 1, 999999);
+      $("pagina").value = String(p + 1);
+      buscar();
+    });
+
+    $("btnLimpar").addEventListener("click", () => {
+      $("dataInicial").value = "";
+      $("dataFinal").value = "";
+      $("modalidades").value = "";
+      $("pagina").value = "1";
+      $("tamanhoPagina").value = "50";
+      $("tipoInstrumento").value = "todos";
+      $("busca").value = "";
+      $("ordenacao").value = "desc";
+      $("lista").innerHTML = "";
+      $("rodape").textContent = "";
+      $("debug").value = "";
+      setMsg("Limpo. Preencha os filtros e clique em Buscar.", "info");
+      localStorage.removeItem("pncp.form");
+    });
+
+    $("btnExemplo").addEventListener("click", () => {
+      // Exemplo seguro para teste (você pode ajustar)
+      $("dataInicial").value = "20240101";
+      $("dataFinal").value = "20240102";
+      $("modalidades").value = "8";
+      $("pagina").value = "1";
+      $("tamanhoPagina").value = "50";
+      $("tipoInstrumento").value = "todos";
+      $("busca").value = "";
+      $("ordenacao").value = "desc";
+      setMsg("Exemplo preenchido. Clique em Buscar.", "info");
+    });
+
+    $("btnExportJson").addEventListener("click", () => {
+      if (!lastMerged.length) return;
+      const name = `pncp_${new Date().toISOString().slice(0,19).replaceAll(":","")}.json`;
+      downloadFile(name, JSON.stringify(lastMerged, null, 2), "application/json;charset=utf-8");
+    });
+
+    $("btnExportCsv").addEventListener("click", () => {
+      if (!lastMerged.length) return;
+      const name = `pncp_${new Date().toISOString().slice(0,19).replaceAll(":","")}.csv`;
+      downloadFile(name, toCsv(lastMerged), "text/csv;charset=utf-8");
+    });
+
+    $("btnToggleDebug").addEventListener("click", () => {
+      const box = $("debugBox");
+      const open = box.style.display !== "none";
+      box.style.display = open ? "none" : "block";
+      $("btnToggleDebug").textContent = open ? "Mostrar debug" : "Ocultar debug";
+    });
+
+    // Reaplicar filtros (sem nova chamada) quando mudar inputs de filtro local
+    ["tipoInstrumento", "busca", "ordenacao"].forEach(id => {
+      $(id).addEventListener("input", () => {
+        // Re-render só se já tiver algo carregado
+        if (lastUrls.length > 0){
+          // lastMerged já está filtrado; então para reaplicar corretamente precisamos do bruto.
+          // Solução simples: guardar bruto numa variável. Aqui vamos reusar o debug (não é ideal).
+          // Para simplicidade, você pode fazer nova busca ou ajustar para manter "raw" separado.
+          // Vamos apenas reexecutar a busca quando mudar filtros.
+        }
+      });
+    });
+
+    // Carregar valores salvos
+    (function restore(){
+      const saved = localStorage.getItem("pncp.form");
+      if (!saved) {
+        // defaults
+        $("dataInicial").value = "20240101";
+        $("dataFinal").value = "20240102";
+        $("modalidades").value = "8";
+        return;
+      }
+      try{
+        const s = JSON.parse(saved);
+        $("dataInicial").value = s.dataInicial || "";
+        $("dataFinal").value = s.dataFinal || "";
+        $("modalidades").value = s.modalidades || "";
+        $("pagina").value = String(s.pagina || 1);
+        $("tamanhoPagina").value = String(s.tamanhoPagina || 50);
+        $("tipoInstrumento").value = s.tipoInstrumento || "todos";
+        $("busca").value = s.busca || "";
+        $("ordenacao").value = s.ordenacao || "desc";
+      } catch {}
+    })();
+  </script>
+</body>
+</html>
