@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consulta PNCP</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+  <header class="bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+        </div>
+        <h1 class="font-bold text-lg text-slate-800">Consulta PNCP</h1>
+      </div>
+      <button onclick="logout()" class="text-sm font-medium text-slate-500 hover:text-red-600 transition-colors flex items-center gap-2">
+        Sair
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    
+    <section id="view-search" class="animate-fade-in">
+      <div class="mb-8">
+        <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Encontrar Contratações</h2>
+        <p class="text-slate-500 mt-1">Preencha os filtros abaixo para consultar a API do Portal Nacional de Contratações Públicas.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+        <form id="pncpForm" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Data Inicial (AAAAMMDD)</label>
+            <input type="text" id="dataInicial" placeholder="Ex: 20240101" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-slate-700" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Data Final (AAAAMMDD)</label>
+            <input type="text" id="dataFinal" placeholder="Ex: 20240131" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-slate-700" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Modalidade(s)</label>
+            <input type="text" id="modalidades" placeholder="Ex: 6, 8" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-slate-700" required>
+            <p class="text-xs text-slate-400 mt-1">Códigos separados por vírgula</p>
+          </div>
+          <div class="lg:col-span-3 flex justify-end mt-4">
+            <button type="submit" id="btnBuscar" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl transition-all shadow-sm flex items-center gap-2">
+              <span>Pesquisar na API</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="view-results" class="hidden animate-fade-in">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        <div>
+          <button onclick="showView('search')" class="text-sm text-blue-600 hover:underline flex items-center gap-1 mb-2">
+            &larr; Nova pesquisa
+          </button>
+          <h2 class="text-2xl font-bold text-slate-800 tracking-tight" id="resultsTitle">Resultados</h2>
+          <p class="text-slate-500 mt-1 text-sm" id="resultsSubtitle">A carregar...</p>
+        </div>
+        
+        <div class="flex gap-2">
+          <button onclick="exportData('csv')" class="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium py-2 px-4 rounded-lg transition-all shadow-sm">Exportar CSV</button>
+          <button onclick="exportData('json')" class="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium py-2 px-4 rounded-lg transition-all shadow-sm">Exportar JSON</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6 flex flex-col sm:flex-row gap-4">
+        <div class="flex-1">
+          <input type="text" id="filtroTexto" placeholder="Filtrar por órgão, objeto ou município..." class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm text-slate-700">
+        </div>
+        <div class="w-full sm:w-64">
+          <select id="ordenacao" class="w-full px-4 py-2 rounded-lg border border-slate-200 focus:border-blue-500 outline-none text-sm text-slate-700 bg-white">
+            <option value="desc">Mais recentes primeiro</option>
+            <option value="asc">Mais antigos primeiro</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="resultsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+
+    <section id="view-details" class="hidden animate-fade-in">
+      <button onclick="showView('results')" class="text-sm text-blue-600 hover:underline flex items-center gap-1 mb-6">
+        &larr; Voltar aos resultados
+      </button>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8" id="detailsContainer"></div>
+    </section>
+
+  </main>
+
+  <script src="js/auth.js"></script>
+  <script src="js/api-pncp.js"></script>
+  <script src="js/ui.js"></script>
+  <script>checkAuth();</script>
+</body>
+</html>
