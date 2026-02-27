@@ -35,12 +35,10 @@ const MODALIDADES_BUSCA = ["6", "8", "2", "3", "7"];
 // Palavras-chave exclusivas para buscar Vagas Médicas
 const MEDICAL_KEYWORDS = ["médico", "medico", "medicina", "plantão", "plantao", "clínico", "clinico", "psiquiatra", "pediatra", "saúde", "hospitalar"];
 
-// Estado da Aplicação
 let currentRegion = "";
 let currentState = "";
 let currentCitiesData = {}; 
 
-// === NAVEGAÇÃO ENTRE VISTAS ===
 function showView(viewName) {
   ['regions', 'states', 'cities', 'vacancies'].forEach(v => {
     document.getElementById(`view-${v}`).classList.add('hidden');
@@ -50,7 +48,6 @@ function showView(viewName) {
   document.getElementById(`view-${viewName}`).classList.add('block');
 }
 
-// === RENDERIZAR REGIÕES (Tela 1) ===
 function initDashboard() {
   const grid = document.getElementById('regionsGrid');
   grid.innerHTML = '';
@@ -71,7 +68,6 @@ function initDashboard() {
   });
 }
 
-// === RENDERIZAR ESTADOS (Tela 2) ===
 function openRegion(regionName) {
   currentRegion = regionName;
   document.getElementById('statesTitle').textContent = `Estados - ${regionName}`;
@@ -96,30 +92,30 @@ function openRegion(regionName) {
   showView('states');
 }
 
-// === BUSCAR NA API E RENDERIZAR CIDADES (Tela 3) ===
 async function openState(stateName, stateSigla) {
   currentState = stateSigla;
   document.getElementById('citiesTitle').textContent = `Vagas em ${stateName}`;
-  document.getElementById('citiesSubtitle').textContent = "Buscando editais médicos (últimos 30 dias)...";
+  document.getElementById('citiesSubtitle').innerHTML = "Buscando editais médicos (últimos 30 dias)...";
   document.getElementById('citiesGrid').innerHTML = '';
   document.getElementById('loadingCities').classList.remove('hidden');
   showView('cities');
 
-  // Ajustado para 30 dias para não estourar o limite de datas da API
+  // Últimos 30 dias para garantir que a API não bloqueia por limite de datas
   const { dataInicial, dataFinal } = ApiPNCP.getDateRange(30); 
   let rawItems = [];
 
   try {
     for (let i = 0; i < MODALIDADES_BUSCA.length; i++) {
       const mod = MODALIDADES_BUSCA[i];
-      // Tamanho página 500 para trazer mais resultados por requisição
-      const url = ApiPNCP.buildUrl({ dataInicial, dataFinal, codigoModalidadeContratacao: mod, tamanhoPagina: 500 });
+      
+      // SOLUÇÃO DO ERRO HTTP 400: Tamanho de página reduzido para 50 (o limite oficial da API)
+      const url = ApiPNCP.buildUrl({ dataInicial, dataFinal, codigoModalidadeContratacao: mod, tamanhoPagina: 50 });
       
       const json = await ApiPNCP.fetchJsonWithTimeout(url);
       const items = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
       rawItems = rawItems.concat(items);
 
-      // PAUSA DE 300ms ENTRE AS CHAMADAS (Isso evita o Erro 429 - Too Many Requests)
+      // Pausa essencial de 300ms entre as pesquisas para não sobrecarregar a API
       if (i < MODALIDADES_BUSCA.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 300));
       }
@@ -178,7 +174,6 @@ async function openState(stateName, stateSigla) {
   }
 }
 
-// === RENDERIZAR VAGAS DA CIDADE (Tela 4) ===
 function openVacancies(cityName) {
   document.getElementById('vacanciesTitle').textContent = `Vagas em ${cityName} - ${currentState}`;
   const grid = document.getElementById('vacanciesGrid');
@@ -218,5 +213,4 @@ function openVacancies(cityName) {
   showView('vacancies');
 }
 
-// Inicializa a primeira tela
 document.addEventListener('DOMContentLoaded', initDashboard);
