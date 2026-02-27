@@ -1,4 +1,3 @@
-// === BASE DE DADOS LOCAL (Regiões e Estados) ===
 const mapData = {
   "Centro-Oeste": [
     { nome: "Goiás", sigla: "GO" },
@@ -29,14 +28,12 @@ const mapData = {
   ]
 };
 
-// Modalidades da API PNCP mais comuns para contratação médica
 const MODALIDADES_BUSCA = ["6", "8", "2", "3", "7"]; 
-
-// Palavras-chave exclusivas para buscar Vagas Médicas
 const MEDICAL_KEYWORDS = ["médico", "medico", "medicina", "plantão", "plantao", "clínico", "clinico", "psiquiatra", "pediatra", "saúde", "hospitalar"];
 
 let currentRegion = "";
 let currentState = "";
+let currentCitySelected = "";
 let currentCitiesData = {}; 
 
 function showView(viewName) {
@@ -94,46 +91,71 @@ function openRegion(regionName) {
 
 async function openState(stateName, stateSigla) {
   currentState = stateSigla;
-  document.getElementById('citiesTitle').textContent = `Vagas em ${stateName}`;
-  document.getElementById('citiesSubtitle').innerHTML = "Buscando editais médicos (últimos 30 dias)...";
+  document.getElementById('citiesTitle').textContent = `Documentos em ${stateName}`;
+  document.getElementById('citiesSubtitle').innerHTML = "Buscando Editais, Atas e Contratos médicos (últimos 30 dias)...";
   document.getElementById('citiesGrid').innerHTML = '';
   document.getElementById('loadingCities').classList.remove('hidden');
   showView('cities');
 
-  // Últimos 30 dias para garantir que a API não bloqueia por limite de datas
   const { dataInicial, dataFinal } = ApiPNCP.getDateRange(30); 
   let rawItems = [];
 
   try {
+    // 1. BUSCAR EDITAIS
     for (let i = 0; i < MODALIDADES_BUSCA.length; i++) {
       const mod = MODALIDADES_BUSCA[i];
-      
-      // SOLUÇÃO DO ERRO HTTP 400: Tamanho de página reduzido para 50 (o limite oficial da API)
-      const url = ApiPNCP.buildUrl({ dataInicial, dataFinal, codigoModalidadeContratacao: mod, tamanhoPagina: 50 });
+      const url = ApiPNCP.buildUrl(API_EDITAIS, { dataInicial, dataFinal, codigoModalidadeContratacao: mod, tamanhoPagina: 50 });
       
       const json = await ApiPNCP.fetchJsonWithTimeout(url);
       const items = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+      items.forEach(it => it.tipoDocumento = 'edital');
       rawItems = rawItems.concat(items);
 
-      // Pausa essencial de 300ms entre as pesquisas para não sobrecarregar a API
-      if (i < MODALIDADES_BUSCA.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
+      if (i < MODALIDADES_BUSCA.length - 1) await new Promise(resolve => setTimeout(resolve, 300));
     }
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // 2. BUSCAR ATAS DE REGISTRO
+    const urlAtas = ApiPNCP.buildUrl(API_ATAS, { dataInicial, dataFinal, tamanhoPagina: 50 });
+    const jsonAtas = await ApiPNCP.fetchJsonWithTimeout(urlAtas);
+    const itemsAtas = Array.isArray(jsonAtas?.data) ? jsonAtas.data : (Array.isArray(jsonAtas) ? jsonAtas : []);
+    itemsAtas.forEach(it => it.tipoDocumento = 'ata');
+    rawItems = rawItems.concat(itemsAtas);
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // 3. BUSCAR CONTRATOS
+    const urlContratos = ApiPNCP.buildUrl(API_CONTRATOS, { dataInicial, dataFinal, tamanhoPagina: 50 });
+    const jsonContratos = await ApiPNCP.fetchJsonWithTimeout(urlContratos);
+    const itemsContratos = Array.isArray(jsonContratos?.data) ? jsonContratos.data : (Array.isArray(jsonContratos) ? jsonContratos : []);
+    itemsContratos.forEach(it => it.tipoDocumento = 'contrato');
+    rawItems = rawItems.concat(itemsContratos);
+
 
     currentCitiesData = {};
     let medicalCount = 0;
 
     rawItems.forEach(item => {
-      const uf = ApiPNCP.pick(item, ["uf", "siglaUf"]);
-      if (uf !== stateSigla) return; 
+      // Localização robusta de Estado (UF)
+      const ufEncontrada = ApiPNCP.pick(item, ["uf", "siglaUf"]) || (item.orgaoEntidade && item.orgaoEntidade.ufSigla) || (item.unidadeOrgao && item.unidadeOrgao.ufSigla);
+      if (ufEncontrada && ufEncontrada !== stateSigla) return; 
 
-      const objeto = ApiPNCP.pick(item, ["objetoCompra", "objeto", "descricaoObjeto"]).toLowerCase();
+      // Objeto varia entre Editais, Atas e Contratos
+      const objeto = ApiPNCP.pick(item, ["objetoCompra", "objeto", "descricaoObjeto", "objetoAta", "objetoContrato"]).toLowerCase();
       
       const isMedical = MEDICAL_KEYWORDS.some(kw => objeto.includes(kw));
       if (!isMedical) return;
 
-      const municipio = ApiPNCP.pick(item, ["municipioNome", "municipio"]) || "Município não informado";
+      // Cálculo de Relevância: Quantas vezes as palavras médicas aparecem na descrição
+      let relScore = 0;
+      MEDICAL_KEYWORDS.forEach(kw => {
+          const regex = new RegExp(kw, "gi");
+          const matches = objeto.match(regex);
+          if (matches) relScore += matches.length;
+      });
+      item.relevanceScore = relScore;
+
+      // Localização robusta de Município
+      const municipio = ApiPNCP.pick(item, ["municipioNome", "municipio"]) || (item.orgaoEntidade && item.orgaoEntidade.municipioNome) || "Município não informado";
       
       if (!currentCitiesData[municipio]) {
         currentCitiesData[municipio] = [];
@@ -145,10 +167,10 @@ async function openState(stateName, stateSigla) {
     document.getElementById('loadingCities').classList.add('hidden');
     
     const cityNames = Object.keys(currentCitiesData).sort();
-    document.getElementById('citiesSubtitle').textContent = `${medicalCount} vagas encontradas em ${cityNames.length} municípios.`;
+    document.getElementById('citiesSubtitle').textContent = `${medicalCount} documentos encontrados em ${cityNames.length} municípios.`;
 
     if (cityNames.length === 0) {
-      document.getElementById('citiesGrid').innerHTML = `<div class="col-span-full p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200">Nenhuma vaga médica recente encontrada neste estado nos últimos 30 dias.</div>`;
+      document.getElementById('citiesGrid').innerHTML = `<div class="col-span-full p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200">Nenhum documento médico encontrado neste estado nos últimos 30 dias.</div>`;
       return;
     }
 
@@ -156,11 +178,16 @@ async function openState(stateName, stateSigla) {
       const btn = document.createElement('button');
       const vagas = currentCitiesData[city].length;
       btn.className = "w-full text-left bg-white rounded-2xl border border-slate-200 p-5 active:scale-[0.98] transition-all hover:border-blue-300 hover:shadow-md group flex items-center justify-between";
-      btn.onclick = () => openVacancies(city);
+      btn.onclick = () => {
+          currentCitySelected = city;
+          document.getElementById('vacanciesTitle').textContent = `Documentos em ${city} - ${currentState}`;
+          showView('vacancies');
+          renderVacancies();
+      };
       btn.innerHTML = `
         <div>
           <h3 class="text-[15px] font-bold text-slate-800">${city}</h3>
-          <p class="text-xs text-blue-600 font-semibold mt-1">${vagas} vaga(s) / edital(is)</p>
+          <p class="text-xs text-blue-600 font-semibold mt-1">${vagas} documento(s)</p>
         </div>
         <svg class="w-5 h-5 text-slate-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       `;
@@ -174,43 +201,80 @@ async function openState(stateName, stateSigla) {
   }
 }
 
-function openVacancies(cityName) {
-  document.getElementById('vacanciesTitle').textContent = `Vagas em ${cityName} - ${currentState}`;
+// === RENDERIZAR E ORDENAR RESULTADOS ===
+function renderVacancies() {
   const grid = document.getElementById('vacanciesGrid');
   grid.innerHTML = '';
 
-  const vacancies = currentCitiesData[cityName] || [];
+  let vacancies = currentCitiesData[currentCitySelected] || [];
 
-  vacancies.forEach(item => {
-    const orgao = ApiPNCP.pick(item, ["orgaoNome", "orgaoEntidadeRazaoSocial"]) || "Órgão não informado";
-    const objeto = ApiPNCP.pick(item, ["objetoCompra", "objeto", "descricaoObjeto"]) || "Sem descrição.";
-    const link = ApiPNCP.pick(item, ["linkSistemaOrigem", "link", "url"]);
-    const dataPub = ApiPNCP.pick(item, ["dataPublicacaoPncp", "dataPublicacao"]);
-    const formatData = dataPub ? new Date(dataPub).toLocaleDateString('pt-BR') : '';
+  // 1. Aplicar o Filtro por Tipo de Documento
+  const tipoDoc = document.getElementById('filtroTipoDoc').value;
+  if (tipoDoc !== 'todos') {
+      vacancies = vacancies.filter(v => v.tipoDocumento === tipoDoc);
+  }
 
-    const card = document.createElement('div');
-    card.className = "bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between h-full shadow-sm hover:shadow-md transition-all";
-    card.innerHTML = `
-      <div>
-        <div class="flex justify-between items-start mb-4">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100">Recente</span>
-          <span class="text-xs text-slate-400 font-medium">${formatData}</span>
-        </div>
-        <h3 class="text-sm font-bold text-slate-800 mb-2">${orgao}</h3>
-        <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4">${objeto}</p>
-      </div>
-      <div class="mt-4 pt-4 border-t border-slate-100">
-        ${link ? `
-          <a href="${link}" target="_blank" class="w-full text-center bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-all shadow-sm inline-block">
-            Acessar Edital Oficial
-          </a>
-        ` : '<span class="text-xs text-red-500 bg-red-50 px-3 py-1.5 rounded-lg inline-block font-medium">Link do edital não informado pela prefeitura</span>'}
-      </div>
-    `;
-    grid.appendChild(card);
+  // 2. Aplicar Ordenação
+  const ordenacao = document.getElementById('ordenacaoVagas').value;
+  vacancies.sort((a, b) => {
+      if (ordenacao === 'relevante') {
+          return b.relevanceScore - a.relevanceScore; // Maior pontuação primeiro
+      } else {
+          const dateA = new Date(ApiPNCP.pick(a, ["dataPublicacaoPncp", "dataPublicacao", "dataAssinatura", "dataInclusao"])).getTime() || 0;
+          const dateB = new Date(ApiPNCP.pick(b, ["dataPublicacaoPncp", "dataPublicacao", "dataAssinatura", "dataInclusao"])).getTime() || 0;
+          
+          if (ordenacao === 'recente') return dateB - dateA; // Decrescente
+          if (ordenacao === 'antigo') return dateA - dateB;  // Crescente
+      }
+      return 0;
   });
 
-  showView('vacancies');
+  if (vacancies.length === 0) {
+      grid.innerHTML = `<div class="col-span-full p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200">Nenhum documento encontrado com os filtros selecionados.</div>`;
+      return;
+  }
+
+  vacancies.forEach(item => {
+      const orgao = ApiPNCP.pick(item, ["orgaoNome", "orgaoEntidadeRazaoSocial", "nomeRazaoSocial"]) || (item.orgaoEntidade && item.orgaoEntidade.razaoSocial) || "Órgão não informado";
+      const objeto = ApiPNCP.pick(item, ["objetoCompra", "objeto", "descricaoObjeto", "objetoAta", "objetoContrato"]) || "Sem descrição.";
+      const link = ApiPNCP.pick(item, ["linkSistemaOrigem", "link", "url"]);
+      const dataPub = ApiPNCP.pick(item, ["dataPublicacaoPncp", "dataPublicacao", "dataAssinatura", "dataInclusao"]);
+      const formatData = dataPub ? new Date(dataPub).toLocaleDateString('pt-BR') : '';
+
+      // Identidade visual por tipo de documento
+      let badgeColor = "bg-green-50 text-green-700 border-green-100";
+      let badgeText = "Edital / Contratação";
+      
+      if (item.tipoDocumento === 'ata') {
+          badgeColor = "bg-purple-50 text-purple-700 border-purple-100";
+          badgeText = "Ata de Registro";
+      } else if (item.tipoDocumento === 'contrato') {
+          badgeColor = "bg-orange-50 text-orange-700 border-orange-100";
+          badgeText = "Contrato Assinado";
+      }
+
+      const card = document.createElement('div');
+      card.className = "bg-white rounded-2xl border border-slate-200 p-6 flex flex-col justify-between h-full shadow-sm hover:shadow-md transition-all";
+      card.innerHTML = `
+        <div>
+          <div class="flex justify-between items-start mb-4">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeColor}">${badgeText}</span>
+            <span class="text-xs text-slate-400 font-medium">${formatData}</span>
+          </div>
+          <h3 class="text-sm font-bold text-slate-800 mb-2 line-clamp-2" title="${orgao.replace(/"/g, '&quot;')}">${orgao}</h3>
+          <p class="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4 line-clamp-4" title="${objeto.replace(/"/g, '&quot;')}">${objeto}</p>
+        </div>
+        <div class="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+          <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Relevância: ${item.relevanceScore}</span>
+          ${link ? `
+            <a href="${link}" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all shadow-sm">
+              Ver Oficial
+            </a>
+          ` : '<span class="text-[10px] text-red-500 bg-red-50 px-2 py-1 rounded font-medium">Link indisponível</span>'}
+        </div>
+      `;
+      grid.appendChild(card);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', initDashboard);
