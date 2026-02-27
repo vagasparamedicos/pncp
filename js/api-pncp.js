@@ -1,10 +1,12 @@
-const API_BASE = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao";
+// URLs das 3 fontes diferentes do PNCP
+const API_EDITAIS = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao";
+const API_ATAS = "https://pncp.gov.br/api/consulta/v1/atas";
+const API_CONTRATOS = "https://pncp.gov.br/api/consulta/v1/contratos";
 
 const ApiPNCP = {
   onlyDigits: (s) => (s || "").replace(/\D+/g, ""),
 
-  // Calcula a data de hoje e a data de X dias atrás no formato AAAAMMDD
-  getDateRange: (daysAgo = 60) => {
+  getDateRange: (daysAgo = 30) => {
     const today = new Date();
     const past = new Date();
     past.setDate(today.getDate() - daysAgo);
@@ -22,11 +24,15 @@ const ApiPNCP = {
     };
   },
 
-  buildUrl: ({dataInicial, dataFinal, codigoModalidadeContratacao, pagina=1, tamanhoPagina=50}) => {
-    const u = new URL(API_BASE);
+  // Ajustado para aceitar a URL base (porque agora temos 3)
+  buildUrl: (baseUrl, {dataInicial, dataFinal, codigoModalidadeContratacao, pagina=1, tamanhoPagina=50}) => {
+    const u = new URL(baseUrl);
     u.searchParams.set("dataInicial", dataInicial);
     u.searchParams.set("dataFinal", dataFinal);
-    u.searchParams.set("codigoModalidadeContratacao", codigoModalidadeContratacao);
+    // Atas e Contratos não usam a modalidade na URL base da mesma forma que os Editais
+    if (codigoModalidadeContratacao) {
+        u.searchParams.set("codigoModalidadeContratacao", codigoModalidadeContratacao);
+    }
     u.searchParams.set("pagina", String(pagina));
     u.searchParams.set("tamanhoPagina", String(tamanhoPagina));
     return u.toString();
@@ -39,9 +45,6 @@ const ApiPNCP = {
       const resp = await fetch(url, { signal: ctrl.signal });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       
-      // SOLUÇÃO PARA O ERRO: "Unexpected end of JSON input"
-      // Lemos a resposta como texto primeiro. Se a API do governo não devolver nada (em branco), 
-      // o sistema não bloqueia e retorna apenas uma lista vazia de forma segura.
       const text = await resp.text();
       if (!text || text.trim() === "") {
         return { data: [] };
